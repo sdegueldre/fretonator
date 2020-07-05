@@ -37,8 +37,8 @@ export class FretboardComponent implements OnChanges, OnInit {
   @Input() stringNamesAreCaseSensitive = false;
   @Input() loadExpanded = false;
   @Input() configuration;
+  @StoredProperty('FretModes', FretModes, FretModes.twelve) fretMode: FretModes;
   orientation;
-  fretMode;
   frets;
   highlightedDegrees = new Set<ScaleDegree>();
 
@@ -47,31 +47,9 @@ export class FretboardComponent implements OnChanges, OnInit {
   }
 
   ngOnInit() {
-    const _fretMode = this.localStorage.getItem(StorageKeys.fretMode);
-    switch (_fretMode) {
-      case 'twelve':
-        this.fretMode = FretModes.twelve;
-        break;
-      case 'twentyFour':
-        this.fretMode = FretModes.twentyFour;
-        break;
-      default:
-        this.fretMode = FretModes.twelve;
-    }
+    this.loadPropFromStorage(StorageKeys.orientation, 'orientation', Orientations.right);
 
-    const _orientation = this.localStorage.getItem(StorageKeys.orientation);
-    switch (_orientation) {
-      case 'right':
-        this.orientation = Orientations.right;
-        break;
-      case 'left':
-        this.orientation = Orientations.left;
-        break;
-      default:
-        this.orientation = Orientations.right;
-    }
-
-    this.toggleHighlightTonic();
+    this.toggleHighlight(ScaleDegree.tonic);
     this.configureFretboard();
   }
 
@@ -81,14 +59,11 @@ export class FretboardComponent implements OnChanges, OnInit {
     }
   }
 
-  get FretModes() {
-    return FretModes;
-  }
-
   get Orientations() {
     return Orientations;
   }
-
+  // TODO: any reason this method is not capitalized like the other enum getters?
+  // also, any reason it's singular rather than plural?
   get scaleDegree() {
     return ScaleDegree;
   }
@@ -101,7 +76,6 @@ export class FretboardComponent implements OnChanges, OnInit {
   setOrientation(orientation: Orientations) {
     this.orientation = orientation;
     this.localStorage.setItem(StorageKeys.orientation, this.orientation);
-
     this.configureFretboard();
   }
 
@@ -111,15 +85,45 @@ export class FretboardComponent implements OnChanges, OnInit {
     this.configureFretboard();
   }
 
-  toggleHighlightTonic() {
-    this.highlightedDegrees.has(ScaleDegree.tonic) ? this.highlightedDegrees.delete(ScaleDegree.tonic) : this.highlightedDegrees.add(ScaleDegree.tonic);
+  toggleHighlight(degree: ScaleDegree) {
+    this.highlightedDegrees.has(degree) ? this.highlightedDegrees.delete(degree) : this.highlightedDegrees.add(degree);
   }
 
-  toggleHighlightMediant() {
-    this.highlightedDegrees.has(ScaleDegree.mediant) ? this.highlightedDegrees.delete(ScaleDegree.mediant) : this.highlightedDegrees.add(ScaleDegree.mediant);
+  loadPropFromStorage<T>(storageKey: string, propName: string, defaultValue: T) {
+    const value = this.localStorage.getItem(storageKey);
+    this[propName] = value || defaultValue;
   }
+}
 
-  toggleHighlightDominant() {
-    this.highlightedDegrees.has(ScaleDegree.dominant) ? this.highlightedDegrees.delete(ScaleDegree.dominant) : this.highlightedDegrees.add(ScaleDegree.dominant);
+// TODO: This needs https://github.com/angular/angular/pull/35464 to be merged to work.
+function StoredProperty<EnumType, StoredType>(enumName: string, enumValue: EnumType, defaultValue: StoredType) {
+  return function(target, propName): void {
+    console.log(...arguments);
+    const storageKey = StorageKeys[propName];
+    let propValue;
+    Object.defineProperty(target, propName, {
+      set(value: StoredType) {
+        propValue = value;
+        this.localStorage.setItem(storageKey, value);
+        this.configureFretboard();
+        return value;
+      },
+      get() {
+        return propValue;
+      },
+    });
+
+    Object.defineProperty(target, enumName, {
+      get() {
+        return enumValue;
+      },
+    });
+
+    const previousOnInit = target.ngOnInit;
+    target.ngOnInit = (...args) => {
+      const value = this.localStorage.getItem(storageKey);
+      this[propName] = value || defaultValue;
+      return previousOnInit(...args);
+    }
   }
 }
